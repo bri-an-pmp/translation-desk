@@ -5,7 +5,9 @@ const T = {
     skip: 'Skip to content', tagline: 'Museum translation, English → Spanish. You approve every word.',
     tabProjects: 'Projects', tabGlossary: 'Glossary',
     newTitle: 'New project', name: 'Name', namePh: 'e.g. Spring exhibition 2027', file: 'Document',
-    fileHint: 'Word (.docx), text (.txt, .md) or a label sheet (.csv with a “text” column and optional “max” column for character limits).',
+    fileHint: 'Word (.docx), PDF, text (.txt, .md) or a label sheet (.csv with a “text” column and optional “max” column for character limits). PDFs, including scans, are read by Claude for a few cents.',
+    offline: "The app isn't responding. Double-click Translation Desk on your Desktop to start it again, then reload this page.",
+    reading: 'Reading the file…', readingPdf: 'Claude is reading the PDF… (about 30 seconds)',
     orPaste: 'Or paste the text', pasteLabel: 'Text to translate', pastePh: 'Leave a blank line between paragraphs. Start a heading with #.',
     settings: 'Settings', variant: 'Spanish for', vUs: 'Visitors in the U.S. (Mexican and Central American roots)', vNeutral: 'All of Latin America (neutral)', vMexican: 'Mexico', vCastilian: 'Spain',
     register: 'Speak to visitors as', rImpersonal: 'neither (impersonal)',
@@ -33,7 +35,9 @@ const T = {
     skip: 'Ir al contenido', tagline: 'Traducción para museos, del inglés al español. Usted aprueba cada palabra.',
     tabProjects: 'Proyectos', tabGlossary: 'Glosario',
     newTitle: 'Proyecto nuevo', name: 'Nombre', namePh: 'p. ej., Exposición de primavera 2027', file: 'Documento',
-    fileHint: 'Word (.docx), texto (.txt, .md) o una hoja de cédulas (.csv con una columna “text” y, si quiere, una columna “max” con el límite de caracteres).',
+    fileHint: 'Word (.docx), PDF, texto (.txt, .md) o una hoja de cédulas (.csv con una columna “text” y, si quiere, una columna “max” con el límite de caracteres). Claude lee los PDF, incluso los escaneados, por unos centavos.',
+    offline: 'La aplicación no responde. Haga doble clic en Translation Desk en su escritorio para iniciarla de nuevo y vuelva a cargar esta página.',
+    reading: 'Leyendo el archivo…', readingPdf: 'Claude está leyendo el PDF… (unos 30 segundos)',
     orPaste: 'O pegue el texto', pasteLabel: 'Texto para traducir', pastePh: 'Deje una línea en blanco entre párrafos. Empiece un título con #.',
     settings: 'Configuración', variant: 'Español para', vUs: 'Visitantes en EE. UU. (raíces mexicanas y centroamericanas)', vNeutral: 'Toda América Latina (neutro)', vMexican: 'México', vCastilian: 'España',
     register: 'Dirigirse al visitante de', rImpersonal: 'ninguno (impersonal)',
@@ -85,7 +89,12 @@ function say(msg, isError = false) {
 }
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  let res;
+  try {
+    res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  } catch {
+    throw new Error(t('offline'));
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -144,7 +153,7 @@ async function loadProjects() {
             el('span', { class: 'pinfo', text: p.broken ? '⚠' : t('info', p) }))))
         : [el('li', { class: 'empty', text: t('noProjects') })]),
     );
-  } catch (err) { say(t('error') + err.message, true); }
+  } catch (err) { say(err.message, true); }
 }
 
 async function loadSettings() {
@@ -172,13 +181,14 @@ $('#newForm').addEventListener('submit', async (e) => {
   try {
     api('/api/settings', { method: 'PUT', body: JSON.stringify(settings) }).catch(() => {});
     const body = { name: $('#pName').value.trim() || file?.name?.replace(/\.[^.]+$/, ''), settings };
+    say(file && /\.pdf$/i.test(file.name) ? t('readingPdf') : t('reading'));
     if (file) Object.assign(body, { fileName: file.name, fileBase64: await readAsBase64(file) });
     else body.text = text;
     const p = await api('/api/projects', { method: 'POST', body: JSON.stringify(body) });
     $('#newForm').reset(); loadSettings();
     say(t('created'));
     openProject(p.id);
-  } catch (err) { say(t('error') + err.message, true); }
+  } catch (err) { say(err.message, true); }
   finally { btn.disabled = false; }
 });
 
@@ -188,7 +198,7 @@ async function openProject(id) {
     show('project');
     renderProject();
     $('#pTitle').focus?.();
-  } catch (err) { say(t('error') + err.message, true); }
+  } catch (err) { say(err.message, true); }
 }
 
 function needsAttention(s) {
@@ -251,7 +261,7 @@ async function saveSegment(sid, patch, status) {
     if (st) st.textContent = t('saved');
   } catch (err) {
     if (status) status.textContent = '';
-    say(t('error') + err.message, true);
+    say(err.message, true);
   }
 }
 
@@ -288,7 +298,7 @@ $('#translateBtn').addEventListener('click', async () => {
       }
     }
   } catch (err) {
-    say(t('error') + err.message, true);
+    say(err.message, true);
   } finally {
     $('#progressWrap').hidden = true;
     await openProject(p.id);
@@ -311,7 +321,7 @@ async function loadGlossary() {
   try {
     state.glossary = await api('/api/glossary');
     $('#gBody').replaceChildren(...(state.glossary.length ? state.glossary : [undefined]).map(glossaryRow));
-  } catch (err) { say(t('error') + err.message, true); }
+  } catch (err) { say(err.message, true); }
 }
 
 $('#gAdd').addEventListener('click', () => { const r = glossaryRow(); $('#gBody').append(r); r.querySelector('input').focus(); });
@@ -321,7 +331,7 @@ $('#gSave').addEventListener('click', async () => {
     await api('/api/glossary', { method: 'PUT', body: JSON.stringify(rows.filter((r) => r.source && r.target)) });
     await loadGlossary();
     say(t('gSaved'));
-  } catch (err) { say(t('error') + err.message, true); }
+  } catch (err) { say(err.message, true); }
 });
 $('#gImport').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -330,7 +340,7 @@ $('#gImport').addEventListener('change', async (e) => {
     const g = await api('/api/glossary/import', { method: 'POST', body: JSON.stringify({ csv: await file.text() }) });
     await loadGlossary();
     say(t('gImported', g.length));
-  } catch (err) { say(t('error') + err.message, true); }
+  } catch (err) { say(err.message, true); }
   e.target.value = '';
 });
 
@@ -349,7 +359,7 @@ $('#langBtn').addEventListener('click', () => {
 });
 
 (async () => {
-  try { state.status = await api('/api/status'); } catch (err) { say(t('error') + err.message, true); }
+  try { state.status = await api('/api/status'); } catch (err) { say(err.message, true); }
   show('projects');
   applyLang();
   loadSettings();

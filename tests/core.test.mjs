@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { segmentText, segmentCsv, joinBrokenLines, visibleLength, parseCsv } from '../lib/segment.mjs';
+import { segmentText, segmentCsv, joinBrokenLines, visibleLength, parseCsv, detectType, segmentFile } from '../lib/segment.mjs';
 import { checkSegment, checkConsistency } from '../lib/checks.mjs';
 import { similarity, findMatches, remember } from '../lib/memory.mjs';
 import { cleanProject, cleanSettings } from '../lib/store.mjs';
@@ -127,4 +127,24 @@ test('exports: CSV guards against formulas; Word files build', async () => {
   assert.match(csv, /'=SUM\(A1\)/);
   assert.ok((await bilingualDocx(p)).length > 1000);
   assert.ok((await spanishDocx(p)).length > 1000);
+});
+
+test('file type comes from the contents, not the name', async () => {
+  assert.equal(detectType('letter.docx', Buffer.from('Dear selection committee,\nThank you for your time.')), 'text');
+  assert.equal(detectType('x.docx', Buffer.from('%PDF-1.7')), 'pdf');
+  assert.equal(detectType('x.doc', Buffer.from('d0cf11e0a1b11ae1', 'hex')), 'doc');
+  assert.equal(detectType('x.docx', Buffer.from('PK\x03\x04')), 'docx');
+  assert.equal(detectType('x.pages', Buffer.from('PK\x03\x04')), 'pages');
+  const { segments } = await segmentFile('letter.docx', Buffer.from('Dear team,\n\nThank you.'));
+  assert.equal(segments.length, 2);
+  await assert.rejects(segmentFile('old.doc', Buffer.from('d0cf11e0a1b11ae1', 'hex')), /Save As/);
+  await assert.rejects(segmentFile('broken.docx', Buffer.from('PK\x03\x04garbage')), /damaged/);
+  await assert.rejects(segmentFile('scan.pdf', Buffer.from('%PDF-1.7')), /API key/);
+});
+
+test('PDF blocks become segments, with broken lines joined', async () => {
+  const readPdf = async () => ({ blocks: [{ kind: 'heading', source: 'Room 1' }, { kind: 'body', source: 'A long sentence that' }, { kind: 'body', source: 'continues here.' }], costUsd: 0.03 });
+  const { segments, costUsd } = await segmentFile('x.pdf', Buffer.from('%PDF-1.7'), { readPdf });
+  assert.deepEqual(segments.map((x) => x.source), ['Room 1', 'A long sentence that continues here.']);
+  assert.equal(costUsd, 0.03);
 });

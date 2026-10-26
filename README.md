@@ -6,7 +6,7 @@ Built by a working translator for the kind of texts museums actually send: wall 
 
 ## What it does
 
-- **Reads the files museums send:** Word (`.docx`), plain text, or a label sheet (`.csv`) with a character limit per label. Lines that Word broke in the middle of a paragraph are joined back together.
+- **Reads the files museums send:** Word (`.docx`), PDF (Claude reads it, scans included, for a few cents), plain text, or a label sheet (`.csv`) with a character limit per label. The real file type is detected from its contents, and lines broken in the middle of a paragraph are joined back together.
 - **Translates with the museum's rules:** Spanish for U.S. visitors (default), all of Latin America, Mexico or Spain; usted, tú or impersonal; and how to handle artwork titles. The default is the original title plus [Spanish in brackets].
 - **Flags what a translator needs to see:** ambiguous phrases, artist gender, possible errors in the English, names that may be missing an accent, and cuts made to fit a label.
 - **Checks every segment mechanically:** character limits, glossary terms, numbers and dates, italic titles, ¿ ¡, capitalized months, and the same English translated two different ways.
@@ -50,6 +50,16 @@ npm run compare -- "/path/to/that folder"
 
 The app translates the original, then a separate Claude review compares both versions against the English. It lists every material difference, which version is better, and a rule the app could learn. The report is saved in that folder, never here.
 
+## First results
+
+On a real past job (a 1,500-word gallery press release with a social post), the first comparison ran in about 3 minutes and cost $0.56: $0.39 for the draft and $0.17 for the review. It found:
+
+- **One real bug.** The source had a sponsor line in both English and Spanish, and the app translated both, so the line appeared twice. It's now fixed: the Spanish duplicate is left empty and flagged.
+- **Four places where the translator's version was better** ("destartaladas" for *dilapidated*, "impulsadas por la comunidad" for *community-driven*, "la conquista de", and the single sponsor line). They're now rules in the museum guide.
+- **Judgment calls for the translator.** The review preferred the app's draft in 15 places, for example the established toy name "piedra mascota" and gender-neutral wording when the English doesn't give a gender. The translator settled each one, and the decisions became glossary entries or rules.
+
+The reviewer is also Claude, so its scores lean toward Claude's own style, and it doesn't know what the client asked for. The point is the list of differences, not the score.
+
 ## How it works
 
 | Piece | File | What it does |
@@ -69,12 +79,12 @@ The app translates the original, then a separate Claude review compares both ver
 npm test
 ```
 
-18 tests cover segmenting, every check, translation memory, data validation, batching, the prompt layout, the output schema, cost math and the exports. They don't call Claude.
+20 tests cover file-type detection, segmenting, every check, translation memory, data validation, batching, the prompt layout, the output schema, cost math and the exports. They don't call Claude.
 
 ## Limits
 
 - It produces a draft for a professional to review. It doesn't replace the translator's judgment or signature.
-- Scanned PDFs aren't read yet; use the Word file or paste the text.
+- Old Word (`.doc`), Pages and RTF files must be saved as `.docx` first (the app explains how).
 - Certified translations (birth certificates, diplomas) are planned as a second mode.
 
 ## License

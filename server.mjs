@@ -6,10 +6,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { segmentFile, segmentText, parseCsv } from './lib/segment.mjs';
+import { readPdf } from './lib/pdf.mjs';
 import { runChecks } from './lib/checks.mjs';
 import { remember } from './lib/memory.mjs';
 import { bilingualDocx, spanishDocx, toCsv } from './lib/export.mjs';
-import { estimateCost, MODEL, readKey, translateProject } from './lib/translate.mjs';
+import { estimateCost, explainError, MODEL, readKey, translateProject } from './lib/translate.mjs';
 import { makeBatches } from './lib/prompt.mjs';
 import * as store from './lib/store.mjs';
 
@@ -72,12 +73,15 @@ const routes = [
   ['GET', /^\/api\/projects$/, () => store.listProjects()],
   ['POST', /^\/api\/projects$/, async (req) => {
     const body = await readBody(req);
-    let segments;
-    if (typeof body.fileBase64 === 'string' && body.fileName) segments = await segmentFile(String(body.fileName), Buffer.from(body.fileBase64, 'base64'));
-    else if (typeof body.text === 'string') segments = segmentText(body.text);
+    let segments, costUsd = 0;
+    if (typeof body.fileBase64 === 'string' && body.fileName) {
+      const apiKey = await readKey();
+      const pdf = apiKey ? (buf) => readPdf(buf, { apiKey }).catch((err) => { throw new HttpError(400, err.status ? explainError(err) : err.message); }) : undefined;
+      ({ segments, costUsd = 0 } = await segmentFile(String(body.fileName), Buffer.from(body.fileBase64, 'base64'), { readPdf: pdf }));
+    } else if (typeof body.text === 'string') segments = segmentText(body.text);
     else throw new HttpError(400, 'Choose a file or paste some text.');
-    if (!segments.length) throw new HttpError(400, 'No text was found in that file.');
-    const project = store.cleanProject({ name: body.name || body.fileName || 'Untitled', fileName: body.fileName || '', settings: body.settings, segments });
+    if (!segments.length) throw new HttpError(400, 'No text was found in that file. If it is a scan or an image, try the PDF; otherwise paste the text.');
+    const project = store.cleanProject({ name: body.name || body.fileName || 'Untitled', fileName: body.fileName || '', settings: body.settings, segments, usage: { costUsd } });
     project.id = store.newId(project.name);
     await store.saveProject(project);
     return project;
@@ -215,7 +219,7 @@ const server = http.createServer(async (req, res) => {
     if (res.headersSent) return res.end();
     const status = err.status || 500;
     if (status === 500) console.error(err);
-    send(res, status, { error: err.status ? err.message : `Something went wrong: ${err.message}` });
+    send(res, status, { error: err.status ? err.message : `Something went wrong in the app: ${err.message}. Try again; if it keeps happening, restart Translation Desk.` });
   }
 });
 

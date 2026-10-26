@@ -66,7 +66,7 @@ async function main() {
   if (!apiKey) throw new Error('No Claude API key found in Keychain. See "Set up your API key" in the README.');
 
   const settings = cleanSettings(JSON.parse(await fs.readFile(path.join(dir, 'settings.json'), 'utf8').catch(() => '{}')));
-  const project = cleanProject({ name: path.basename(dir), settings, segments: await segmentFile(original, await fs.readFile(original)) });
+  const project = cleanProject({ name: path.basename(dir), settings, segments: (await segmentFile(original, await fs.readFile(original))).segments });
   console.log(`Translating ${project.segments.length} segments with the app…`);
   const result = await translateProject(project, { glossary: [], memory: [], apiKey, onProgress: (p) => process.stdout.write(`\r  part ${p.batch}/${p.batches}`) });
   console.log(`\n  done, $${project.usage.costUsd.toFixed(2)}${result.problems.length ? ` (problems: ${result.problems.join(' ')})` : ''}`);
