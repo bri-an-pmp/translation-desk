@@ -1,6 +1,6 @@
 # Security
 
-A local app: a Node server bound to 127.0.0.1 and a static page. Runtime dependencies: `@anthropic-ai/sdk`, `zod`, `mammoth`, `docx`.
+A local app: a Node server bound to 127.0.0.1 and a static page. It handles personal documents (birth certificates, IDs), so originals live outside the repository and can be deleted per project. Runtime dependencies: `@anthropic-ai/sdk`, `zod`, `mammoth`, `docx`.
 
 ## Protections
 

@@ -12,6 +12,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import mammoth from 'mammoth';
 import { segmentFile } from '../lib/segment.mjs';
+import { DOMAINS, LANGS } from '../lib/prompt.mjs';
 import { runChecks } from '../lib/checks.mjs';
 import { cleanProject, cleanSettings } from '../lib/store.mjs';
 import { costOf, explainError, readKey, translateProject } from '../lib/translate.mjs';
@@ -37,7 +38,7 @@ const Verdict = z.object({
   ),
 });
 
-const JUDGE_SYSTEM = `You are a senior English-to-Spanish museum translation reviewer. Compare two Spanish translations of the same English source: the APP translation (machine-assisted draft) and the REFERENCE (the professional translator's delivered version). Judge both against the English source, not against each other: the reference can be wrong too.
+const judgeSystem = (src, tgt, type) => `You are a senior ${src}-to-${tgt} translation reviewer specializing in ${type}. Compare two ${tgt} translations of the same ${src} source: the APP translation (machine-assisted draft) and the REFERENCE (the professional translator's delivered version). Judge both against the ${src} source, not against each other: the reference can be wrong too.
 
 List every material difference: meaning, omissions, additions, terminology, register, how titles and names are handled, dates and numbers, and natural style. Skip trivial word-order variants that are equally good. For each, say which is better (or equal), how serious it is, and the general rule the app should learn (written so it could be added to a style guide; empty if there's nothing general to learn).`;
 
@@ -58,7 +59,7 @@ async function findFile(dir, base, exts) {
 
 async function main() {
   const dir = process.argv[2];
-  if (!dir) throw new Error('Pass the sample folder, e.g. npm run compare -- "~/Documents/Translation Assistant - private samples/museum/<job folder>"');
+  if (!dir) throw new Error('Pass the sample folder, e.g. npm run compare -- "~/Documents/Translation Assistant - private samples/<type>/<job folder>"');
   const original = await findFile(dir, 'original', ['.docx', '.txt', '.md']);
   const reference = await findFile(dir, 'translation', ['.pdf', '.docx', '.txt']);
   if (!original || !reference) throw new Error('The folder needs original.docx (or .txt) and translation.pdf (or .docx/.txt).');
@@ -82,9 +83,9 @@ async function main() {
     output_config: { effort: 'high', format: betaZodOutputFormat(Verdict) },
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    system: JUDGE_SYSTEM,
+    system: judgeSystem(...LANGS[project.settings.direction], DOMAINS[project.settings.domain].label.toLowerCase()),
     messages: [{ role: 'user', content: [
-      { type: 'text', text: `<english_source>\n${sourceText}\n</english_source>\n\n<app_translation>\n${appText}\n</app_translation>` },
+      { type: 'text', text: `<source>\n${sourceText}\n</source>\n\n<app_translation>\n${appText}\n</app_translation>` },
       await readReference(reference),
       { type: 'text', text: 'The REFERENCE translation is the document above (or in <reference>). Compare.' },
     ] }],

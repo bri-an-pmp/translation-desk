@@ -4,8 +4,8 @@ import { segmentText, segmentCsv, joinBrokenLines, visibleLength, parseCsv, dete
 import { checkSegment, checkConsistency } from '../lib/checks.mjs';
 import { similarity, findMatches, remember } from '../lib/memory.mjs';
 import { cleanProject, cleanSettings } from '../lib/store.mjs';
-import { makeBatches, buildUserMessage, buildSystem, BatchResult } from '../lib/prompt.mjs';
-import { toCsv, bilingualDocx, spanishDocx } from '../lib/export.mjs';
+import { makeBatches, buildUserMessage, buildSystem, BatchResult, orientGlossary } from '../lib/prompt.mjs';
+import { toCsv, bilingualDocx, translationDocx, certificate } from '../lib/export.mjs';
 import { costOf } from '../lib/translate.mjs';
 
 const seg = (source, target, extra = {}) => ({ id: 's001', kind: 'body', source, target, maxChars: null, flags: [], checks: [], approved: false, ...extra });
@@ -111,7 +111,7 @@ test('prompt: glossary in the cached system prompt, segments in the user message
 });
 
 test('output schema accepts a valid batch and rejects a broken one', () => {
-  assert.ok(BatchResult.safeParse({ segments: [{ id: 's001', kind: 'label', translation: 'Hola', flags: [] }], term_decisions: [] }).success);
+  assert.ok(BatchResult.safeParse({ segments: [{ id: 's001', kind: 'form_field', translation: 'Hola', flags: [{ type: 'illegible', span: 'x', note: 'y' }] }], term_decisions: [] }).success);
   assert.ok(!BatchResult.safeParse({ segments: [{ id: 's001', translation: 'Hola' }] }).success);
 });
 
@@ -126,7 +126,7 @@ test('exports: CSV guards against formulas; Word files build', async () => {
   const csv = toCsv(p);
   assert.match(csv, /'=SUM\(A1\)/);
   assert.ok((await bilingualDocx(p)).length > 1000);
-  assert.ok((await spanishDocx(p)).length > 1000);
+  assert.ok((await translationDocx(p)).length > 1000);
 });
 
 test('file type comes from the contents, not the name', async () => {
@@ -140,11 +140,54 @@ test('file type comes from the contents, not the name', async () => {
   await assert.rejects(segmentFile('old.doc', Buffer.from('d0cf11e0a1b11ae1', 'hex')), /Save As/);
   await assert.rejects(segmentFile('broken.docx', Buffer.from('PK\x03\x04garbage')), /damaged/);
   await assert.rejects(segmentFile('scan.pdf', Buffer.from('%PDF-1.7')), /API key/);
+  assert.equal(detectType('IMG_1234.HEIC', Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypheic')])), 'heic');
+  assert.equal(detectType('photo.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0])), 'jpeg');
+  assert.equal(detectType('scan.png', Buffer.from('89504e470d0a1a0a', 'hex')), 'png');
 });
 
-test('PDF blocks become segments, with broken lines joined', async () => {
-  const readPdf = async () => ({ blocks: [{ kind: 'heading', source: 'Room 1' }, { kind: 'body', source: 'A long sentence that' }, { kind: 'body', source: 'continues here.' }], costUsd: 0.03 });
-  const { segments, costUsd } = await segmentFile('x.pdf', Buffer.from('%PDF-1.7'), { readPdf });
+test('PDF and photo blocks become segments, with broken lines joined', async () => {
+  const readDocument = async () => ({ blocks: [{ kind: 'heading', source: 'Room 1' }, { kind: 'body', source: 'A long sentence that' }, { kind: 'body', source: 'continues here.' }], costUsd: 0.03 });
+  const { segments, costUsd } = await segmentFile('x.pdf', Buffer.from('%PDF-1.7'), { readDocument });
   assert.deepEqual(segments.map((x) => x.source), ['Room 1', 'A long sentence that continues here.']);
   assert.equal(costUsd, 0.03);
+});
+
+test('Spanish → English: glossary flips, Spanish-only checks are off, ¿ ¡ left behind are caught', () => {
+  assert.deepEqual(orientGlossary('es-en', [{ source: 'exhibition', target: 'exposición', note: '' }]), [{ source: 'exposición', target: 'exhibition', note: '' }]);
+  const c = checkSegment(seg('¿Dónde nació?', '¿Where was he born?'), [], { toSpanish: false });
+  assert.ok(c.some((x) => x.check === 'punctuation' && /left in the English/.test(x.message)));
+  assert.ok(!checkSegment(seg('Nació en Marzo.', 'Born in March.'), [], { toSpanish: false }).some((x) => x.check === 'capitalization'));
+  const sys = buildSystem(cleanSettings({ direction: 'es-en', domain: 'certified' }), []);
+  assert.match(sys[0].text, /Spanish-to-English/);
+  assert.match(sys[0].text, /Certified translation of official documents|official document/);
+  assert.doesNotMatch(sys[1].text, /Spanish variant/);
+});
+
+test('checks: bracketed seals and signatures must survive', () => {
+  assert.ok(has(checkSegment(seg('[Sello: Registro Civil] [Firma]', '[Seal: Civil Registry]'), [], { toSpanish: false }), 'brackets'));
+});
+
+test('memory keeps directions apart', () => {
+  const mem = remember([], { source: 'Acta de nacimiento', target: 'Birth certificate', project: 'x', direction: 'es-en' });
+  assert.equal(findMatches(mem, 'Acta de nacimiento', { direction: 'en-es' }).length, 0);
+  assert.equal(findMatches(mem, 'Acta de nacimiento', { direction: 'es-en' }).length, 1);
+});
+
+test('certificate of accuracy: language, translator details and notary block', () => {
+  const text = (paras) => paras.map((p) => JSON.stringify(p)).join(' ');
+  const es = cleanProject({ name: 'Acta de nacimiento', settings: { domain: 'certified', direction: 'es-en', notaryBlock: true } });
+  const out = text(certificate(es, { name: 'Ana Translator', address: '1 Main St', contact: '', credentials: '' }));
+  assert.match(out, /Certificate of Translation Accuracy/);
+  assert.match(out, /from Spanish into English/);
+  assert.match(out, /Ana Translator/);
+  assert.match(out, /Notary Public, State of Texas/);
+  const en = cleanProject({ name: 'Diploma', settings: { domain: 'certified', direction: 'en-es' } });
+  const out2 = text(certificate(en, {}));
+  assert.match(out2, /Certificado de exactitud/);
+  assert.match(out2, /Nombre del traductor/);
+  assert.doesNotMatch(out2, /Notary Public/);
+});
+
+test('checks: extra italics for first-mention originals are fine', () => {
+  assert.ok(!has(checkSegment(seg('Registro Civil', 'Civil Registry (*Registro Civil*)'), [], { toSpanish: false }), 'italics'));
 });

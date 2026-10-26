@@ -1,7 +1,7 @@
 {
   "name": "translation-desk",
   "version": "0.1.0",
-  "description": "Local museum translation assistant (English to Spanish) built on the Claude API, with human review and approval.",
+  "description": "Local English ⇄ Spanish translation assistant on the Claude API: certified documents, legal, museum, business and technical text, with human review and approval.",
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",

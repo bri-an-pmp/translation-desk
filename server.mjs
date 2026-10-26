@@ -6,10 +6,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { segmentFile, segmentText, parseCsv } from './lib/segment.mjs';
-import { readPdf } from './lib/pdf.mjs';
+import { readDocument } from './lib/read-document.mjs';
 import { runChecks } from './lib/checks.mjs';
 import { remember } from './lib/memory.mjs';
-import { bilingualDocx, spanishDocx, toCsv } from './lib/export.mjs';
+import { bilingualDocx, langs, toCsv, translationDocx } from './lib/export.mjs';
 import { estimateCost, explainError, MODEL, readKey, translateProject } from './lib/translate.mjs';
 import { makeBatches } from './lib/prompt.mjs';
 import * as store from './lib/store.mjs';
@@ -22,9 +22,9 @@ const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const MAX_BODY = 30 * 1024 * 1024;
 const running = new Set();
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.pdf': 'application/pdf' };
 const SECURITY_HEADERS = {
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
 };
@@ -68,29 +68,52 @@ const routes = [
   ['GET', /^\/api\/status$/, async () => ({ keyFound: Boolean(await readKey()) || process.env.TD_FAKE === '1', fake: process.env.TD_FAKE === '1', model: MODEL, dataDir: store.DATA_DIR })],
 
   ['GET', /^\/api\/settings$/, () => store.getSettings()],
+  ['GET', /^\/api\/profile$/, () => store.getProfile()],
+  ['PUT', /^\/api\/profile$/, async (req) => { const pr = store.cleanProfile(await readBody(req)); await store.saveProfile(pr); return pr; }],
   ['PUT', /^\/api\/settings$/, async (req) => { const s = store.cleanSettings(await readBody(req)); await store.saveSettings(s); return s; }],
 
   ['GET', /^\/api\/projects$/, () => store.listProjects()],
   ['POST', /^\/api\/projects$/, async (req) => {
     const body = await readBody(req);
-    let segments, costUsd = 0;
+    const settings = store.cleanSettings(body.settings);
+    let segments, costUsd = 0, language, buffer;
     if (typeof body.fileBase64 === 'string' && body.fileName) {
       const apiKey = await readKey();
-      const pdf = apiKey ? (buf) => readPdf(buf, { apiKey }).catch((err) => { throw new HttpError(400, err.status ? explainError(err) : err.message); }) : undefined;
-      ({ segments, costUsd = 0 } = await segmentFile(String(body.fileName), Buffer.from(body.fileBase64, 'base64'), { readPdf: pdf }));
+      buffer = Buffer.from(body.fileBase64, 'base64');
+      const read = apiKey
+        ? (buf, type) => readDocument(buf, type, { apiKey, official: settings.domain === 'certified' }).catch((err) => { throw new HttpError(400, err.status && !err.headers ? err.message : explainError(err)); })
+        : undefined;
+      ({ segments, costUsd = 0, language } = await segmentFile(String(body.fileName), buffer, { readDocument: read }));
     } else if (typeof body.text === 'string') segments = segmentText(body.text);
     else throw new HttpError(400, 'Choose a file or paste some text.');
     if (!segments.length) throw new HttpError(400, 'No text was found in that file. If it is a scan or an image, try the PDF; otherwise paste the text.');
-    const project = store.cleanProject({ name: body.name || body.fileName || 'Untitled', fileName: body.fileName || '', settings: body.settings, segments, usage: { costUsd } });
+    const project = store.cleanProject({ name: body.name || body.fileName || 'Untitled', fileName: body.fileName || '', settings, segments, usage: { costUsd } });
     project.id = store.newId(project.name);
+    if (buffer) project.original = await store.saveOriginal(project.id, String(body.fileName), buffer);
     await store.saveProject(project);
-    return project;
+    const [src] = langs(project);
+    const notice = language && language !== 'other' && language !== src ? 'languageMismatch' : '';
+    return { ...project, notice };
   }],
   ['GET', /^\/api\/projects\/([\w-]+)$/, async (_req, [id]) => {
     const p = await loadProject(id);
     const todo = p.segments.filter((s) => !s.target && !s.approved && !s.flags.some((f) => f.type === 'duplicate'));
     const batches = makeBatches(todo).length;
     return { ...p, estimate: batches ? estimateCost(todo, batches) : 0, translating: running.has(id) };
+  }],
+  ['DELETE', /^\/api\/projects\/([\w-]+)$/, async (_req, [id]) => {
+    if (running.has(id)) throw new HttpError(409, 'Wait until the translation finishes before deleting.');
+    await loadProject(id);
+    await store.deleteProject(id);
+    return { deleted: id };
+  }],
+  ['GET', /^\/api\/projects\/([\w-]+)\/original$/, async (_req, [id], res) => {
+    const file = await store.readOriginal(id).catch(() => null);
+    if (!file) throw new HttpError(404, 'The original file is not stored for this project.');
+    const type = TYPES[path.extname(file.name)];
+    if (!type) throw new HttpError(404, 'This kind of original can only be viewed in its own app.');
+    send(res, 200, file.data, type, { 'Content-Disposition': 'inline' });
+    return undefined;
   }],
   ['PATCH', /^\/api\/projects\/([\w-]+)$/, async (req, [id]) => {
     const p = await loadProject(id);
@@ -110,7 +133,7 @@ const routes = [
     if (typeof body.approved === 'boolean') seg.approved = body.approved && Boolean(seg.target.trim());
     runChecks(p, await store.getGlossary());
     await store.saveProject(p);
-    if (seg.approved) await store.saveMemory(remember(await store.getMemory(), { source: seg.source, target: seg.target, project: p.name }));
+    if (seg.approved) await store.saveMemory(remember(await store.getMemory(), { source: seg.source, target: seg.target, project: p.name, direction: p.settings.direction }));
     return p;
   }],
   ['POST', /^\/api\/projects\/([\w-]+)\/translate$/, async (req, [id], res) => {
@@ -146,13 +169,15 @@ const routes = [
     }
     return undefined;
   }],
-  ['GET', /^\/api\/projects\/([\w-]+)\/export\/(bilingual|spanish|csv)$/, async (_req, [id, kind], res) => {
+  ['GET', /^\/api\/projects\/([\w-]+)\/export\/(bilingual|translation|spanish|csv)$/, async (_req, [id, kind], res) => {
     const p = await loadProject(id);
     const base = asciiName(p.name);
+    const [src, tgt] = langs(p).map((l) => l.toUpperCase());
+    const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     const [data, type, file] =
-      kind === 'csv' ? [toCsv(p), 'text/csv; charset=utf-8', `${base}_ES.csv`]
-      : kind === 'spanish' ? [await spanishDocx(p), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', `${base}_ES.docx`]
-      : [await bilingualDocx(p), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', `${base}_EN-ES_review.docx`];
+      kind === 'csv' ? [toCsv(p), 'text/csv; charset=utf-8', `${base}_${tgt}.csv`]
+      : kind === 'bilingual' ? [await bilingualDocx(p), DOCX, `${base}_${src}-${tgt}_review.docx`]
+      : [await translationDocx(p, await store.getProfile()), DOCX, `${base}_${tgt}.docx`];
     send(res, 200, data, type, { 'Content-Disposition': `attachment; filename="${file}"` });
     return undefined;
   }],
