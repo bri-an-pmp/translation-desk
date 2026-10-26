@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.tmp
+# client documents and results never live in this folder; this is a second safety net
+data/
+samples/
+eval-results/

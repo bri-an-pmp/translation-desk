@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Translation Desk</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main" data-t="skip">Skip to content</a>
+  <header class="top">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="36" height="36">
+      <div>
+        <h1>Translation Desk</h1>
+        <p class="sub" data-t="tagline">Museum translation, English → Spanish. You approve every word.</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="keyStatus" class="pill" role="status"></span>
+      <button id="langBtn" class="ghost" type="button" aria-label="Español">ES</button>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Sections">
+    <button type="button" data-view="projects" class="tab" data-t="tabProjects">Projects</button>
+    <button type="button" data-view="glossary" class="tab" data-t="tabGlossary">Glossary</button>
+  </nav>
+
+  <main id="main" tabindex="-1">
+    <p id="live" class="live" role="status" aria-live="polite"></p>
+
+    <!-- Projects: list + new -->
+    <section id="view-projects" class="view">
+      <div class="grid2">
+        <form id="newForm" class="card" novalidate>
+          <h2 data-t="newTitle">New project</h2>
+          <label for="pName" data-t="name">Name</label>
+          <input id="pName" name="name" type="text" autocomplete="off" data-t-placeholder="namePh" placeholder="e.g. Spring exhibition 2027">
+
+          <label for="pFile" data-t="file">Document</label>
+          <input id="pFile" name="file" type="file" accept=".docx,.txt,.md,.csv">
+          <p class="hint" data-t="fileHint">Word (.docx), text (.txt, .md) or a label sheet (.csv with a “text” column and optional “max” column for character limits).</p>
+
+          <details>
+            <summary data-t="orPaste">Or paste the text</summary>
+            <label for="pText" class="sr" data-t="pasteLabel">Text to translate</label>
+            <textarea id="pText" rows="8" data-t-placeholder="pastePh" placeholder="Leave a blank line between paragraphs. Start a heading with #."></textarea>
+          </details>
+
+          <fieldset>
+            <legend data-t="settings">Settings</legend>
+            <label for="sVariant" data-t="variant">Spanish for</label>
+            <select id="sVariant">
+              <option value="us" data-t="vUs">Visitors in the U.S. (Mexican and Central American roots)</option>
+              <option value="neutral" data-t="vNeutral">All of Latin America (neutral)</option>
+              <option value="mexican" data-t="vMexican">Mexico</option>
+              <option value="castilian" data-t="vCastilian">Spain</option>
+            </select>
+            <label for="sRegister" data-t="register">Speak to visitors as</label>
+            <select id="sRegister">
+              <option value="usted">usted</option>
+              <option value="tu">tú</option>
+              <option value="impersonal" data-t="rImpersonal">neither (impersonal)</option>
+            </select>
+            <label for="sTitles" data-t="titles">Artwork and exhibition titles</label>
+            <select id="sTitles">
+              <option value="keep-with-gloss" data-t="tGloss">Keep original + [Spanish in brackets]</option>
+              <option value="translate-english" data-t="tEnglish">Translate English titles only</option>
+              <option value="keep-original" data-t="tKeep">Keep all titles as written</option>
+              <option value="translate-all" data-t="tAll">Translate all titles</option>
+            </select>
+            <label for="sNotes" data-t="styleNotes">Museum style notes (optional)</label>
+            <textarea id="sNotes" rows="3" data-t-placeholder="styleNotesPh" placeholder="e.g. Use “Latine”. Write “exposición”, not “muestra”."></textarea>
+          </fieldset>
+          <button type="submit" class="primary" data-t="create">Create project</button>
+        </form>
+
+        <div class="card">
+          <h2 data-t="yourProjects">Your projects</h2>
+          <ul id="projectList" class="plist"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- One project -->
+    <section id="view-project" class="view" hidden>
+      <button type="button" class="ghost back" id="backBtn" data-t="back">← All projects</button>
+      <div class="phead">
+        <h2 id="pTitle" tabindex="-1"></h2>
+        <p id="pMeta" class="hint"></p>
+      </div>
+      <div class="toolbar card">
+        <button type="button" id="translateBtn" class="primary"></button>
+        <div class="progress" hidden id="progressWrap">
+          <progress id="progress" max="100" value="0" aria-labelledby="progressText"></progress>
+          <span id="progressText"></span>
+        </div>
+        <div class="exports">
+          <span class="hint" data-t="download">Download:</span>
+          <a class="btn" id="expBilingual" data-t="expBilingual">Review table (.docx)</a>
+          <a class="btn" id="expSpanish" data-t="expSpanish">Spanish only (.docx)</a>
+          <a class="btn" id="expCsv">CSV</a>
+        </div>
+      </div>
+      <div class="filters">
+        <label for="filter" data-t="show">Show</label>
+        <select id="filter">
+          <option value="all" data-t="fAll">All segments</option>
+          <option value="attention" data-t="fAttention">Needs attention</option>
+          <option value="unapproved" data-t="fUnapproved">Not approved yet</option>
+        </select>
+        <span id="counts" class="hint"></span>
+      </div>
+      <ol id="segments" class="segments"></ol>
+    </section>
+
+    <!-- Glossary -->
+    <section id="view-glossary" class="view" hidden>
+      <div class="card">
+        <h2 data-t="glossaryTitle">Glossary</h2>
+        <p class="hint" data-t="glossaryHint">Terms Claude must always use. The checker warns when a translation doesn't.</p>
+        <table class="gtable">
+          <thead><tr><th scope="col" data-t="gEnglish">English</th><th scope="col" data-t="gSpanish">Spanish</th><th scope="col" data-t="gNote">Note</th><th scope="col"><span class="sr" data-t="gActions">Actions</span></th></tr></thead>
+          <tbody id="gBody"></tbody>
+        </table>
+        <div class="row">
+          <button type="button" id="gAdd" class="ghost" data-t="gAdd">+ Add term</button>
+          <button type="button" id="gSave" class="primary" data-t="gSave">Save glossary</button>
+          <label class="btn" for="gImport" data-t="gImport">Import CSV</label>
+          <input id="gImport" type="file" accept=".csv" class="sr">
+        </div>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
