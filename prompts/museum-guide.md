@@ -91,3 +91,18 @@ Spanish runs about 20–30% longer than English. Wall panels and labels are prin
 - **Measurements** stay in the source's units, with the Spanish abbreviation or word: "12 ft x 6 ft" → "12 × 6 pies".
 - **Names**: when a Spanish-language name appears without its accent (Ana Lopez), flag it and suggest the accented spelling the person likely uses (Ana López); the translator decides.
 - **Typos and errors in the source** (a misspelled word, a misplaced apostrophe such as "the artists' studio" for one artist): translate the intended meaning and flag the error so the client can fix the English too.
+
+## Phrasing that reads as translated, and better choices
+
+| English | Avoid | Prefer |
+|---|---|---|
+| dilapidated (building) | en ruinas (too strong) | destartalado, deteriorado |
+| community-driven | centrado en la comunidad | impulsado por la comunidad, surgido de la comunidad |
+| conquest over nature | la conquista … sobre | la conquista de |
+| on view | disponible | se podrá visitar, estará abierta al público |
+| curated by | está curado por | la curaduría está a cargo de |
+| in the physical and temporal register (abstract sense) | en el registro | en los planos, en las dimensiones |
+| underground (art scene) | clandestino (suggests illegal) | underground |
+| moved back home to (city) | regresó a (city) | regresó a (city), su ciudad natal |
+
+Dangling modifiers in the English ("Drawing on his background…, this project explores") are repaired in Spanish by making the person the subject, and flagged so the client can fix the English.
