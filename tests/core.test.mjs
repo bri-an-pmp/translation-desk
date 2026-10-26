@@ -63,8 +63,10 @@ test('checks: italics, ¿ ¡ and capitalized months', () => {
   assert.ok(!has(checkSegment(seg('September 5', 'Septiembre: 5')), 'capitalization'));
 });
 
-test('checks: empty translation', () => {
+test('checks: empty translation, unless left empty as a duplicate', () => {
   assert.equal(checkSegment(seg('Hello', ''))[0].check, 'empty');
+  const dup = checkSegment(seg('Este proyecto es apoyado…', '', { flags: [{ type: 'duplicate', span: '', note: 'see s024' }] }));
+  assert.equal(dup[0].level, 'note');
 });
 
 test('consistency: same English, different Spanish', () => {

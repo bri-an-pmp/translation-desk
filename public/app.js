@@ -199,7 +199,7 @@ function renderProject() {
   const p = state.project;
   $('#pTitle').textContent = p.name;
   $('#pMeta').textContent = t('meta', p);
-  const todo = p.segments.filter((s) => !s.target && !s.approved).length;
+  const todo = p.segments.filter((s) => !s.target && !s.approved && !s.flags.some((f) => f.type === 'duplicate')).length;
   const btn = $('#translateBtn');
   btn.textContent = todo ? t('translate', todo, p.estimate ? money(p.estimate) : '') : t('allDone');
   btn.disabled = !todo || p.translating;

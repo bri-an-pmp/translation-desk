@@ -84,8 +84,9 @@ const routes = [
   }],
   ['GET', /^\/api\/projects\/([\w-]+)$/, async (_req, [id]) => {
     const p = await loadProject(id);
-    const batches = makeBatches(p.segments.filter((s) => !s.target && !s.approved)).length;
-    return { ...p, estimate: batches ? estimateCost(p.segments.filter((s) => !s.target), batches) : 0, translating: running.has(id) };
+    const todo = p.segments.filter((s) => !s.target && !s.approved && !s.flags.some((f) => f.type === 'duplicate'));
+    const batches = makeBatches(todo).length;
+    return { ...p, estimate: batches ? estimateCost(todo, batches) : 0, translating: running.has(id) };
   }],
   ['PATCH', /^\/api\/projects\/([\w-]+)$/, async (req, [id]) => {
     const p = await loadProject(id);
