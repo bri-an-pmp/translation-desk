@@ -137,7 +137,7 @@ test('file type comes from the contents, not the name', async () => {
   assert.equal(detectType('x.pages', Buffer.from('PK\x03\x04')), 'pages');
   const { segments } = await segmentFile('letter.docx', Buffer.from('Dear team,\n\nThank you.'));
   assert.equal(segments.length, 2);
-  await assert.rejects(segmentFile('old.doc', Buffer.from('d0cf11e0a1b11ae1', 'hex')), /Save As/);
+  await assert.rejects(segmentFile('old.doc', Buffer.from('d0cf11e0a1b11ae1', 'hex')), /couldn't be opened/);
   await assert.rejects(segmentFile('broken.docx', Buffer.from('PK\x03\x04garbage')), /damaged/);
   await assert.rejects(segmentFile('scan.pdf', Buffer.from('%PDF-1.7')), /API key/);
   assert.equal(detectType('IMG_1234.HEIC', Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypheic')])), 'heic');

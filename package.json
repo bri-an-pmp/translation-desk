@@ -1,11 +1,15 @@
 {
   "name": "translation-desk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local English ⇄ Spanish translation assistant on the Claude API: certified documents, legal, museum, business and technical text, with human review and approval.",
-  "main": "server.mjs",
+  "main": "desktop/main.mjs",
   "scripts": {
     "start": "node server.mjs",
     "sample": "TD_FAKE=1 node server.mjs",
+    "app": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "app:sample": "env -u ELECTRON_RUN_AS_NODE TD_FAKE=1 electron .",
+    "build:mac": "electron-builder --mac",
+    "install-app": "npm run build:mac && codesign --force --deep --sign - \"release/mac-arm64/Translation Desk.app\" && rm -rf \"/Applications/Translation Desk.app\" && ditto \"release/mac-arm64/Translation Desk.app\" \"/Applications/Translation Desk.app\" && echo 'Installed in Applications.'",
     "test": "node --test tests/*.test.mjs",
     "compare": "node evals/compare.mjs"
   },
@@ -15,6 +19,42 @@
     "docx": "^9.14.0",
     "mammoth": "^1.13.0",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "electron": "44.9.3",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.brianathey.translationdesk",
+    "productName": "Translation Desk",
+    "copyright": "Copyright © 2026 Brian Athey",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "package.json",
+      "server.mjs",
+      "desktop/**",
+      "lib/**",
+      "prompts/**",
+      "public/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "tools/icon-1024.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "extendInfo": {
+        "NSDocumentsFolderUsageDescription": "Translation Desk keeps your projects, glossary and translation memory in Documents › Translation Desk."
+      }
+    }
   },
   "type": "module",
   "private": true,

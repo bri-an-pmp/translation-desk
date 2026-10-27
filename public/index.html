@@ -26,8 +26,11 @@
   <nav class="tabs" aria-label="Sections">
     <button type="button" data-view="projects" class="tab" data-t="tabProjects">Projects</button>
     <button type="button" data-view="glossary" class="tab" data-t="tabGlossary">Glossary</button>
+    <button type="button" data-view="clients" class="tab" data-t="tabClients">Clients</button>
     <button type="button" data-view="profile" class="tab" data-t="tabProfile">My details</button>
   </nav>
+
+  <div id="dropHint" class="drop-hint" hidden aria-hidden="true"><p data-t="dropHint">Drop the document to start a new project</p></div>
 
   <main id="main" tabindex="-1">
     <p id="live" class="live" role="status" aria-live="polite"></p>
@@ -39,6 +42,10 @@
           <h2 data-t="newTitle">New project</h2>
           <label for="pName" data-t="name">Name</label>
           <input id="pName" name="name" type="text" autocomplete="off" data-t-placeholder="namePh" placeholder="e.g. Birth certificate – J. Pérez">
+
+          <label for="pClient" data-t="client">Client (optional)</label>
+          <input id="pClient" name="client" type="text" autocomplete="off" list="clientList">
+          <datalist id="clientList"></datalist>
 
           <label for="sDomain" data-t="domain">Type of text</label>
           <select id="sDomain">
@@ -57,8 +64,9 @@
           </select>
 
           <label for="pFile" data-t="file">Document</label>
-          <input id="pFile" name="file" type="file" accept=".docx,.pdf,.jpg,.jpeg,.png,.heic,.webp,.txt,.md,.csv">
+          <input id="pFile" name="file" type="file" multiple accept=".docx,.doc,.rtf,.odt,.pdf,.jpg,.jpeg,.png,.heic,.webp,.txt,.md,.csv,.xlf,.xliff,.sdlxliff,.mqxliff">
           <p class="hint" data-t="fileHint">Word, PDF, a photo of the document, text, or a spreadsheet saved as .csv.</p>
+          <p class="hint" id="fileChosen" aria-live="polite"></p>
 
           <details>
             <summary data-t="orPaste">Or paste the text</summary>
@@ -117,10 +125,19 @@
       <div class="phead">
         <h2 id="pTitle" tabindex="-1"></h2>
         <p id="pMeta" class="hint"></p>
+        <div class="client-row">
+          <label for="pClientEdit" data-t="clientShort">Client</label>
+          <input id="pClientEdit" type="text" autocomplete="off" list="clientList">
+        </div>
+      </div>
+      <div id="laterNotice" class="notice" hidden>
+        <p id="laterText"></p>
+        <button type="button" id="laterCancel" class="ghost" data-t="laterCancel">Cancel and translate now instead</button>
       </div>
       <div id="certNotice" class="notice" hidden></div>
       <div class="toolbar card">
         <button type="button" id="translateBtn" class="primary"></button>
+        <button type="button" id="laterBtn" class="ghost"></button>
         <div class="progress" hidden id="progressWrap">
           <progress id="progress" max="100" value="0" aria-labelledby="progressText"></progress>
           <span id="progressText"></span>
@@ -130,6 +147,7 @@
           <a class="btn" id="expBilingual" data-t="expBilingual">Review table (.docx)</a>
           <a class="btn" id="expTranslation"></a>
           <a class="btn" id="expCsv">CSV</a>
+          <a class="btn" id="expXliff" hidden></a>
         </div>
       </div>
       <div class="filters">
@@ -166,6 +184,34 @@
           <input id="gImport" type="file" accept=".csv" class="sr">
         </div>
       </div>
+      <div class="card">
+        <h2 data-t="memTitle">Translation memory</h2>
+        <p class="hint" data-t="memHint">Every segment you approve is saved here and offered to Claude when a similar sentence comes up. You can add memories from other tools (Trados, memoQ, Phrase) as TMX files.</p>
+        <p id="memCount"></p>
+        <div class="row">
+          <label class="btn" for="mImport" data-t="memImport">Import TMX</label>
+          <input id="mImport" type="file" accept=".tmx" class="sr">
+          <a class="btn" id="mExport" href="/api/memory.tmx" data-t="memExport">Download as TMX</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clients: words, cost and time per client -->
+    <section id="view-clients" class="view" hidden>
+      <div class="card">
+        <h2 data-t="clientsTitle">Clients</h2>
+        <p class="hint" data-t="clientsHint">Words, Claude cost and your time for each client, to help with quotes and invoices. Time counts the minutes you are actively working in a project.</p>
+        <div class="table-wrap">
+          <table class="ctable">
+            <thead><tr>
+              <th scope="col" data-t="cClient">Client</th><th scope="col" data-t="cProjects">Projects</th><th scope="col" data-t="cWords">Words</th>
+              <th scope="col" data-t="cCost">Claude cost</th><th scope="col" data-t="cTime">Time</th>
+            </tr></thead>
+            <tbody id="cBody"></tbody>
+          </table>
+        </div>
+        <div class="row"><a class="btn" href="/api/report.csv" data-t="cReport">Download report (.csv)</a></div>
+      </div>
     </section>
 
     <!-- Translator details for certificates -->
@@ -182,6 +228,15 @@
         <label for="prCredentials" data-t="prCredentials">Qualifications line (optional)</label>
         <input id="prCredentials" type="text" data-t-placeholder="prCredentialsPh" placeholder="e.g. Professional translator, Spanish ⇄ English, since 2010">
         <div class="row"><button type="submit" class="primary" data-t="prSave">Save details</button></div>
+      </form>
+
+      <form id="keyForm" class="card narrow" novalidate>
+        <h2 data-t="keyTitle">Claude API key</h2>
+        <p id="keyState" class="hint"></p>
+        <p class="hint"><span data-t="keyHint">Create a key at</span> <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>. <span data-t="keyHint2">It is checked with Claude, then saved in your Mac's Keychain, never in a file.</span></p>
+        <label for="keyInput" data-t="keyLabel">Paste your key</label>
+        <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+        <div class="row"><button type="submit" class="primary" data-t="keySave">Check and save key</button></div>
       </form>
     </section>
   </main>
